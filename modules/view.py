@@ -99,7 +99,6 @@ class View(QWidget):
         self.selected_folder = ""
         self.wim_files = []
         self.is_updating = False  # 업데이트 진행 상태
-        self.updating_checkbox = False  # 체크박스 업데이트 중 플래그
         self.initUI()
         
     def initUI(self):
@@ -519,22 +518,32 @@ class View(QWidget):
         
     @pyqtSlot(int)
     def toggle_all_selection(self, state):
-        """전체 선택/해제 - 버그 수정 버전"""
-        # 업데이트 중이거나 체크박스 업데이트 중이면 무시
-        if self.is_updating or self.updating_checkbox:
+        """전체 선택/해제 - 완전 수정 버전"""
+        # 업데이트 중이면 무시
+        if self.is_updating:
             return
             
-        # 상태 확인을 더 명확하게 처리
+        # 체크박스 상태를 명확하게 판단
         is_checked = (state == Qt.CheckState.Checked.value)
         
+        print(f"DEBUG: toggle_all_selection called with state={state}, is_checked={is_checked}")  # 디버그
+        
         # 모든 항목의 선택 상태 변경
+        changed_count = 0
         for i in range(self.wim_list.count()):
             item = self.wim_list.item(i)
-            if item:  # None 체크 추가
+            if item:
+                old_state = item.is_selected
                 item.set_selection(is_checked)
-            
-        # UI 상태 업데이트
+                if old_state != is_checked:
+                    changed_count += 1
+                    
+        print(f"DEBUG: Changed {changed_count} items")  # 디버그
+        
+        # UI 상태 업데이트 (체크박스 시그널 차단하여 무한루프 방지)
+        self.select_all_checkbox.blockSignals(True)
         self.update_ui_state()
+        self.select_all_checkbox.blockSignals(False)
         
         # 로그 메시지 (전체 선택만 로그에 표시)
         action = "선택" if is_checked else "선택 해제"
@@ -547,16 +556,19 @@ class View(QWidget):
         if self.is_updating:
             return
             
-        if item:  # None 체크 추가
+        if item:
             item.toggle_selection()
+            # 체크박스 시그널 차단하고 UI 업데이트
+            self.select_all_checkbox.blockSignals(True)
             self.update_ui_state()
+            self.select_all_checkbox.blockSignals(False)
         
     def get_selected_files(self):
         """선택된 항목의 파일 경로 리스트를 반환"""
         selected_files = []
         for i in range(self.wim_list.count()):
             item = self.wim_list.item(i)
-            if item and item.is_selected:  # None 체크 추가
+            if item and item.is_selected:
                 selected_files.append(item.file_path)
         return selected_files
         
@@ -632,9 +644,11 @@ class View(QWidget):
         self.add_log("업데이트가 취소되었습니다.")
         
     def update_ui_state(self):
-        """UI 상태 업데이트 - 버그 수정 버전"""
+        """UI 상태 업데이트 - 완전 수정 버전"""
         total_count = self.wim_list.count()
         selected_count = len(self.get_selected_files())
+        
+        print(f"DEBUG: update_ui_state - total={total_count}, selected={selected_count}")  # 디버그
         
         # 업데이트 중이 아닐 때만 시작 버튼 활성화
         if not self.is_updating:
@@ -645,24 +659,26 @@ class View(QWidget):
         
         # 전체 선택 체크박스 상태 업데이트 (업데이트 중이 아닐 때만)
         if not self.is_updating:
-            # 체크박스 업데이트 중 플래그 설정
-            self.updating_checkbox = True
-            
             if total_count == 0:
+                # 파일이 없으면 체크박스 비활성화
                 self.select_all_checkbox.setCheckState(Qt.CheckState.Unchecked)
                 self.select_all_checkbox.setEnabled(False)
+                print("DEBUG: No files - checkbox disabled")
             elif selected_count == 0:
+                # 아무것도 선택되지 않았으면 체크박스 해제 상태
                 self.select_all_checkbox.setCheckState(Qt.CheckState.Unchecked)
                 self.select_all_checkbox.setEnabled(True)
+                print("DEBUG: Nothing selected - checkbox unchecked but enabled")
             elif selected_count == total_count:
+                # 모두 선택되었으면 체크박스 선택 상태
                 self.select_all_checkbox.setCheckState(Qt.CheckState.Checked)
                 self.select_all_checkbox.setEnabled(True)
+                print("DEBUG: All selected - checkbox checked")
             else:
+                # 일부만 선택되었으면 중간 상태
                 self.select_all_checkbox.setCheckState(Qt.CheckState.PartiallyChecked)
                 self.select_all_checkbox.setEnabled(True)
-            
-            # 체크박스 업데이트 완료
-            self.updating_checkbox = False
+                print("DEBUG: Partial selection - checkbox partially checked")
             
     def add_log(self, message):
         """로그 메시지 추가"""
