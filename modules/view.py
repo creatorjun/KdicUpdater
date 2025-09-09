@@ -99,6 +99,7 @@ class View(QWidget):
         self.selected_folder = ""
         self.wim_files = []
         self.is_updating = False  # 업데이트 진행 상태
+        self.updating_checkbox = False  # 체크박스 업데이트 중 플래그
         self.initUI()
         
     def initUI(self):
@@ -506,8 +507,6 @@ class View(QWidget):
             
             if wim_count > 0:
                 self.add_log(f"{wim_count}개의 WIM 파일을 찾았습니다.")
-                # 기본적으로 모든 파일 선택됨
-                self.select_all_checkbox.setChecked(True)
                 self.add_log("파일을 클릭하여 업데이트할 파일을 선택하세요.")
             else:
                 self.add_log("WIM 파일이 없습니다.")
@@ -515,17 +514,26 @@ class View(QWidget):
         except Exception as e:
             self.add_log(f"폴더 스캔 오류: {str(e)}")
             
+        # UI 상태 업데이트 (기본적으로 모든 파일 선택됨)
         self.update_ui_state()
         
     @pyqtSlot(int)
     def toggle_all_selection(self, state):
-        """전체 선택/해제"""
-        is_checked = state == Qt.CheckState.Checked.value
+        """전체 선택/해제 - 버그 수정 버전"""
+        # 업데이트 중이거나 체크박스 업데이트 중이면 무시
+        if self.is_updating or self.updating_checkbox:
+            return
+            
+        # 상태 확인을 더 명확하게 처리
+        is_checked = (state == Qt.CheckState.Checked.value)
         
+        # 모든 항목의 선택 상태 변경
         for i in range(self.wim_list.count()):
             item = self.wim_list.item(i)
-            item.set_selection(is_checked)
+            if item:  # None 체크 추가
+                item.set_selection(is_checked)
             
+        # UI 상태 업데이트
         self.update_ui_state()
         
         # 로그 메시지 (전체 선택만 로그에 표시)
@@ -539,15 +547,16 @@ class View(QWidget):
         if self.is_updating:
             return
             
-        item.toggle_selection()
-        self.update_ui_state()
+        if item:  # None 체크 추가
+            item.toggle_selection()
+            self.update_ui_state()
         
     def get_selected_files(self):
         """선택된 항목의 파일 경로 리스트를 반환"""
         selected_files = []
         for i in range(self.wim_list.count()):
             item = self.wim_list.item(i)
-            if item.is_selected:
+            if item and item.is_selected:  # None 체크 추가
                 selected_files.append(item.file_path)
         return selected_files
         
@@ -623,7 +632,7 @@ class View(QWidget):
         self.add_log("업데이트가 취소되었습니다.")
         
     def update_ui_state(self):
-        """UI 상태 업데이트"""
+        """UI 상태 업데이트 - 버그 수정 버전"""
         total_count = self.wim_list.count()
         selected_count = len(self.get_selected_files())
         
@@ -634,9 +643,10 @@ class View(QWidget):
         # 선택 상태 라벨 업데이트
         self.selection_status_label.setText(f"선택: {selected_count}/{total_count}개")
         
-        # 전체 선택 체크박스 상태 업데이트
-        if not self.is_updating:  # 업데이트 중이 아닐 때만
-            self.select_all_checkbox.blockSignals(True)
+        # 전체 선택 체크박스 상태 업데이트 (업데이트 중이 아닐 때만)
+        if not self.is_updating:
+            # 체크박스 업데이트 중 플래그 설정
+            self.updating_checkbox = True
             
             if total_count == 0:
                 self.select_all_checkbox.setCheckState(Qt.CheckState.Unchecked)
@@ -650,8 +660,9 @@ class View(QWidget):
             else:
                 self.select_all_checkbox.setCheckState(Qt.CheckState.PartiallyChecked)
                 self.select_all_checkbox.setEnabled(True)
-                
-            self.select_all_checkbox.blockSignals(False)
+            
+            # 체크박스 업데이트 완료
+            self.updating_checkbox = False
             
     def add_log(self, message):
         """로그 메시지 추가"""
